@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Legal RAG – Ask a question</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 0 auto; padding: 1.5rem; }
+    h1 { font-size: 1.25rem; margin-bottom: 1rem; }
+    label { display: block; font-weight: 600; margin-bottom: 0.25rem; }
+    textarea { width: 100%; min-height: 80px; padding: 0.5rem; margin-bottom: 0.75rem; }
+    button { padding: 0.5rem 1rem; cursor: pointer; }
+    #answer, #sources, #confidence { margin-top: 1rem; padding: 1rem; background: #f5f5f5; border-radius: 6px; white-space: pre-wrap; }
+    #sources { font-size: 0.9rem; }
+    .source { margin-bottom: 0.75rem; padding: 0.5rem; background: #eee; border-radius: 4px; }
+    .source-meta { font-weight: 600; color: #444; margin-bottom: 0.25rem; }
+    .error { color: #c00; }
+  </style>
+</head>
+<body>
+  <h1>Legal RAG – Ask a question</h1>
+  <p>Answers are based only on ingested legal documents. This is not legal advice.</p>
+  <form id="form">
+    <label for="question">Question</label>
+    <textarea id="question" name="question" placeholder="Type your question here…" required></textarea>
+    <button type="submit">Ask</button>
+  </form>
+  <div id="confidence" style="display: none;"></div>
+  <div id="answer" style="display: none;"></div>
+  <div id="sources" style="display: none;"></div>
+  <div id="error" class="error" style="display: none;"></div>
+
+  <script>
+    const form = document.getElementById('form');
+    const questionEl = document.getElementById('question');
+    const answerEl = document.getElementById('answer');
+    const sourcesEl = document.getElementById('sources');
+    const confidenceEl = document.getElementById('confidence');
+    const errorEl = document.getElementById('error');
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.style.display = 'block';
+      answerEl.style.display = 'none';
+      sourcesEl.style.display = 'none';
+      confidenceEl.style.display = 'none';
+    }
+    function hideError() {
+      errorEl.style.display = 'none';
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideError();
+      const q = questionEl.value.trim();
+      if (!q) return;
+      answerEl.textContent = 'Loading…';
+      answerEl.style.display = 'block';
+      sourcesEl.style.display = 'none';
+      confidenceEl.style.display = 'none';
+      try {
+        const res = await fetch('/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: q })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showError(data.detail || res.statusText);
+          return;
+        }
+        answerEl.textContent = data.answer || '(No answer)';
+        answerEl.style.display = 'block';
+        if (data.confidence_note) {
+          confidenceEl.textContent = 'Confidence: ' + data.confidence_note;
+          confidenceEl.style.display = 'block';
+        }
+        if (data.sources && data.sources.length) {
+          sourcesEl.innerHTML = '<strong>Sources used</strong><br>' + data.sources.map((s, i) =>
+            '<div class="source"><span class="source-meta">' + (s.filename || 'unknown') +
+            (s.page ? ' (page ' + s.page + ')' : '') + '</span><br>' +
+            (s.text ? s.text.substring(0, 400) + (s.text.length > 400 ? '…' : '') : '') + '</div>'
+          ).join('');
+          sourcesEl.style.display = 'block';
+        } else {
+          sourcesEl.innerHTML = 'No sources retrieved.';
+          sourcesEl.style.display = 'block';
+        }
+      } catch (err) {
+        showError('Request failed: ' + (err.message || err));
+      }
+    });
+  </script>
+</body>
+</html>
