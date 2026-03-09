@@ -3,92 +3,247 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Legal RAG – Ask a question</title>
+  <title>Internal Legal Hub V1</title>
   <style>
     * { box-sizing: border-box; }
-    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 0 auto; padding: 1.5rem; }
-    h1 { font-size: 1.25rem; margin-bottom: 1rem; }
-    label { display: block; font-weight: 600; margin-bottom: 0.25rem; }
-    textarea { width: 100%; min-height: 80px; padding: 0.5rem; margin-bottom: 0.75rem; }
-    button { padding: 0.5rem 1rem; cursor: pointer; }
-    #answer, #sources, #confidence { margin-top: 1rem; padding: 1rem; background: #f5f5f5; border-radius: 6px; white-space: pre-wrap; }
-    #sources { font-size: 0.9rem; }
-    .source { margin-bottom: 0.75rem; padding: 0.5rem; background: #eee; border-radius: 4px; }
-    .source-meta { font-weight: 600; color: #444; margin-bottom: 0.25rem; }
-    .error { color: #c00; }
+    body { font-family: system-ui, sans-serif; max-width: 980px; margin: 0 auto; padding: 1.25rem; line-height: 1.4; }
+    h1 { font-size: 1.35rem; margin-bottom: 0.35rem; }
+    p.subtle { margin-top: 0; color: #444; }
+    .tabs { display: flex; gap: 0.5rem; margin: 1rem 0; }
+    .tab-btn { border: 1px solid #bbb; background: #f7f7f7; padding: 0.45rem 0.85rem; cursor: pointer; border-radius: 6px; }
+    .tab-btn.active { background: #e7eefc; border-color: #7c96d1; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    label { display: block; font-weight: 600; margin: 0.5rem 0 0.25rem; }
+    input, textarea { width: 100%; padding: 0.5rem; border: 1px solid #bbb; border-radius: 6px; }
+    textarea { min-height: 92px; }
+    button.action { margin-top: 0.6rem; padding: 0.5rem 1rem; cursor: pointer; border: 1px solid #888; border-radius: 6px; background: #f3f3f3; }
+    .box { margin-top: 0.9rem; padding: 0.9rem; background: #f5f5f5; border-radius: 8px; white-space: pre-wrap; }
+    .source { margin: 0.55rem 0; padding: 0.55rem; background: #ececec; border-radius: 6px; }
+    .source-meta { font-weight: 700; color: #333; margin-bottom: 0.35rem; }
+    .warning { border-left: 4px solid #c99a00; }
+    .error { color: #b00020; margin-top: 0.7rem; }
+    .tiny { font-size: 0.9rem; color: #555; }
   </style>
 </head>
 <body>
-  <h1>Legal RAG – Ask a question</h1>
-  <p>Answers are based only on ingested legal documents. This is not legal advice.</p>
-  <form id="form">
-    <label for="question">Question</label>
-    <textarea id="question" name="question" placeholder="Type your question here…" required></textarea>
-    <button type="submit">Ask</button>
-  </form>
-  <div id="confidence" style="display: none;"></div>
-  <div id="answer" style="display: none;"></div>
-  <div id="sources" style="display: none;"></div>
-  <div id="error" class="error" style="display: none;"></div>
+  <h1>Internal Local Legal Hub V1</h1>
+  <p class="subtle">All modes run fully local. Outputs are for internal assistance only and are not legal advice.</p>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="search">Search</button>
+    <button class="tab-btn" data-tab="ask">Ask</button>
+    <button class="tab-btn" data-tab="draft">Draft</button>
+  </div>
+
+  <section id="search" class="panel active">
+    <h2>Search mode</h2>
+    <p class="tiny">Retrieve matching chunks only (no generation).</p>
+    <form id="search-form">
+      <label for="search-query">Query</label>
+      <input id="search-query" name="query" placeholder="Search legal docs..." required>
+      <button type="submit" class="action">Run search</button>
+    </form>
+    <div id="search-results" class="box" style="display:none;"></div>
+    <div id="search-error" class="error" style="display:none;"></div>
+  </section>
+
+  <section id="ask" class="panel">
+    <h2>Ask mode</h2>
+    <p class="tiny">Legal-safe RAG answer with retrieval gate preserved.</p>
+    <form id="ask-form">
+      <label for="ask-question">Question</label>
+      <textarea id="ask-question" name="question" placeholder="Type your legal question..." required></textarea>
+      <button type="submit" class="action">Ask</button>
+    </form>
+    <div id="ask-confidence" class="box" style="display:none;"></div>
+    <div id="ask-answer" class="box" style="display:none;"></div>
+    <div id="ask-sources" class="box" style="display:none;"></div>
+    <div id="ask-error" class="error" style="display:none;"></div>
+  </section>
+
+  <section id="draft" class="panel">
+    <h2>Draft mode</h2>
+    <p class="tiny">Generates a first draft from template + supporting legal context.</p>
+    <form id="draft-form">
+      <label for="document-type">Document type</label>
+      <input id="document-type" name="document_type" placeholder="e.g., Notice of breach" required>
+
+      <label for="user-facts">User facts</label>
+      <textarea id="user-facts" name="user_facts" placeholder="Facts and timeline..." required></textarea>
+
+      <label for="draft-notes">Optional notes</label>
+      <textarea id="draft-notes" name="notes" placeholder="Internal drafting preferences..."></textarea>
+
+      <button type="submit" class="action">Generate first draft</button>
+    </form>
+    <div id="draft-warning" class="box warning" style="display:none;"></div>
+    <div id="draft-output" class="box" style="display:none;"></div>
+    <div id="draft-sources" class="box" style="display:none;"></div>
+    <div id="draft-error" class="error" style="display:none;"></div>
+  </section>
 
   <script>
-    const form = document.getElementById('form');
-    const questionEl = document.getElementById('question');
-    const answerEl = document.getElementById('answer');
-    const sourcesEl = document.getElementById('sources');
-    const confidenceEl = document.getElementById('confidence');
-    const errorEl = document.getElementById('error');
+    const tabButtons = document.querySelectorAll('.tab-btn');
+    const panels = document.querySelectorAll('.panel');
 
-    function showError(msg) {
-      errorEl.textContent = msg;
-      errorEl.style.display = 'block';
-      answerEl.style.display = 'none';
-      sourcesEl.style.display = 'none';
-      confidenceEl.style.display = 'none';
-    }
-    function hideError() {
-      errorEl.style.display = 'none';
+    function setTab(tabId) {
+      tabButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tabId));
+      panels.forEach(panel => panel.classList.toggle('active', panel.id === tabId));
     }
 
-    form.addEventListener('submit', async (e) => {
+    tabButtons.forEach(btn => btn.addEventListener('click', () => setTab(btn.dataset.tab)));
+
+    function renderSource(s) {
+      const text = (s.text || '').length > 450 ? s.text.slice(0, 450) + '…' : (s.text || '');
+      return `
+        <div class="source">
+          <div class="source-meta">
+            ${s.filename || 'unknown'} | page ${s.page || 0} | chunk ${s.chunk_index || 0} | distance ${Number(s.distance || 0).toFixed(4)}
+          </div>
+          <div class="tiny">
+            type: ${s.source_type || 'unknown'} | section: ${s.section_heading || '-'} | article: ${s.article_marker || '-'}
+          </div>
+          <div>${text}</div>
+        </div>
+      `;
+    }
+
+    function showError(el, msg) {
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    // Search
+    const searchForm = document.getElementById('search-form');
+    const searchQueryEl = document.getElementById('search-query');
+    const searchResultsEl = document.getElementById('search-results');
+    const searchErrorEl = document.getElementById('search-error');
+
+    searchForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      hideError();
-      const q = questionEl.value.trim();
-      if (!q) return;
-      answerEl.textContent = 'Loading…';
-      answerEl.style.display = 'block';
-      sourcesEl.style.display = 'none';
-      confidenceEl.style.display = 'none';
+      searchErrorEl.style.display = 'none';
+      searchResultsEl.style.display = 'block';
+      searchResultsEl.textContent = 'Searching...';
+      const query = searchQueryEl.value.trim();
+      if (!query) return;
+
+      try {
+        const res = await fetch('/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showError(searchErrorEl, data.detail || res.statusText);
+          searchResultsEl.style.display = 'none';
+          return;
+        }
+        const results = data.results || [];
+        if (!results.length) {
+          searchResultsEl.innerHTML = '<strong>No matching chunks found.</strong>';
+          return;
+        }
+        searchResultsEl.innerHTML = `<strong>${results.length} matching chunk(s)</strong>` + results.map(renderSource).join('');
+      } catch (err) {
+        showError(searchErrorEl, 'Search failed: ' + (err.message || err));
+        searchResultsEl.style.display = 'none';
+      }
+    });
+
+    // Ask
+    const askForm = document.getElementById('ask-form');
+    const askQuestionEl = document.getElementById('ask-question');
+    const askAnswerEl = document.getElementById('ask-answer');
+    const askConfidenceEl = document.getElementById('ask-confidence');
+    const askSourcesEl = document.getElementById('ask-sources');
+    const askErrorEl = document.getElementById('ask-error');
+
+    askForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      askErrorEl.style.display = 'none';
+      askAnswerEl.style.display = 'block';
+      askAnswerEl.textContent = 'Loading...';
+      askConfidenceEl.style.display = 'none';
+      askSourcesEl.style.display = 'none';
+
+      const question = askQuestionEl.value.trim();
+      if (!question) return;
+
       try {
         const res = await fetch('/ask', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: q })
+          body: JSON.stringify({ question })
         });
         const data = await res.json();
         if (!res.ok) {
-          showError(data.detail || res.statusText);
+          showError(askErrorEl, data.detail || res.statusText);
           return;
         }
-        answerEl.textContent = data.answer || '(No answer)';
-        answerEl.style.display = 'block';
-        if (data.confidence_note) {
-          confidenceEl.textContent = 'Confidence: ' + data.confidence_note;
-          confidenceEl.style.display = 'block';
-        }
-        if (data.sources && data.sources.length) {
-          sourcesEl.innerHTML = '<strong>Sources used</strong><br>' + data.sources.map((s, i) =>
-            '<div class="source"><span class="source-meta">' + (s.filename || 'unknown') +
-            (s.page ? ' (page ' + s.page + ')' : '') + '</span><br>' +
-            (s.text ? s.text.substring(0, 400) + (s.text.length > 400 ? '…' : '') : '') + '</div>'
-          ).join('');
-          sourcesEl.style.display = 'block';
-        } else {
-          sourcesEl.innerHTML = 'No sources retrieved.';
-          sourcesEl.style.display = 'block';
-        }
+        askAnswerEl.textContent = data.answer || '(No answer)';
+        askAnswerEl.style.display = 'block';
+
+        askConfidenceEl.textContent = 'Confidence: ' + (data.confidence_note || '(none)');
+        askConfidenceEl.style.display = 'block';
+
+        const sources = data.sources || [];
+        askSourcesEl.innerHTML = '<strong>Sources used</strong>' + (sources.length ? sources.map(renderSource).join('') : '<div>No sources retrieved.</div>');
+        askSourcesEl.style.display = 'block';
       } catch (err) {
-        showError('Request failed: ' + (err.message || err));
+        showError(askErrorEl, 'Ask failed: ' + (err.message || err));
+      }
+    });
+
+    // Draft
+    const draftForm = document.getElementById('draft-form');
+    const documentTypeEl = document.getElementById('document-type');
+    const userFactsEl = document.getElementById('user-facts');
+    const draftNotesEl = document.getElementById('draft-notes');
+    const draftWarningEl = document.getElementById('draft-warning');
+    const draftOutputEl = document.getElementById('draft-output');
+    const draftSourcesEl = document.getElementById('draft-sources');
+    const draftErrorEl = document.getElementById('draft-error');
+
+    draftForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      draftErrorEl.style.display = 'none';
+      draftOutputEl.style.display = 'block';
+      draftOutputEl.textContent = 'Generating first draft...';
+      draftWarningEl.style.display = 'none';
+      draftSourcesEl.style.display = 'none';
+
+      const payload = {
+        document_type: documentTypeEl.value.trim(),
+        user_facts: userFactsEl.value.trim(),
+        notes: draftNotesEl.value.trim()
+      };
+      if (!payload.document_type || !payload.user_facts) return;
+
+      try {
+        const res = await fetch('/draft', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showError(draftErrorEl, data.detail || res.statusText);
+          return;
+        }
+
+        draftWarningEl.textContent = data.warning || 'Draft only. Lawyer review may be required.';
+        draftWarningEl.style.display = 'block';
+
+        draftOutputEl.textContent = data.draft || '(No draft generated)';
+        draftOutputEl.style.display = 'block';
+
+        const sources = data.sources || [];
+        draftSourcesEl.innerHTML = '<strong>Supporting sources</strong>' + (sources.length ? sources.map(renderSource).join('') : '<div>No supporting sources retrieved.</div>');
+        draftSourcesEl.style.display = 'block';
+      } catch (err) {
+        showError(draftErrorEl, 'Draft failed: ' + (err.message || err));
       }
     });
   </script>
